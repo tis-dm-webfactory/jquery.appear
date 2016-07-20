@@ -8,7 +8,12 @@ This plugin can be used to prevent unnecessary processeing for content that is h
 
 It implements a custom *appear*/*disappear* events which are fired when an element became visible/invisible in the browser viewport.
 
-        $('someselector').appear(); // It supports optional hash with "force_process" and "interval" keys. Check source code for details.
+        $('someselector').appear(); // It supports optional Object with options:
+        {
+            interval: 250 // delay between event-binding and actual processing of the elements
+            force_process: false // trigger processing after binding (after the delay)
+            scroll_selector: window // element that triggers appear on scroll
+        }
 
         $('<div>test</div>').appear(); // It also supports raw DOM nodes wrapped in jQuery.
 

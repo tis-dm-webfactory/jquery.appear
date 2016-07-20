@@ -6,112 +6,134 @@
  *
  * https://github.com/morr/jquery.appear/
  *
- * Version: 0.3.6
+ * Version: 0.3.7
  */
-(function($) {
-  var selectors = [];
+(function ($) {
+	var selectors = [];
+	var check_binded = [];
+	var check_lock = false;
+	var defaults = {
+		interval: 250,
+		force_process: false,
+		/**
+		 * @type {Object} to which the scroll-event is bound, default 'window'
+		 */
+		scroll_selector: window
+	};
 
-  var check_binded = false;
-  var check_lock = false;
-  var defaults = {
-    interval: 250,
-    force_process: false
-  };
-  var $window = $(window);
+	var $prior_appeared = [];
 
-  var $prior_appeared = [];
+	function process() {
+		check_lock = false;
+		for (var index = 0, selectorsLength = selectors.length; index < selectorsLength; index++) {
+			var $appeared = $(selectors[index]).filter(function () {
+				return $(this).is(':appeared');
+			});
 
-  function appeared(selector) {
-    return $(selector).filter(function() {
-      return $(this).is(':appeared');
-    });
-  }
+			$appeared.trigger('appear', [$appeared]);
 
-  function process() {
-    check_lock = false;
-    for (var index = 0, selectorsLength = selectors.length; index < selectorsLength; index++) {
-      var $appeared = appeared(selectors[index]);
+			if ($prior_appeared[index]) {
+				var $disappeared = $prior_appeared[index].not($appeared);
+				$disappeared.trigger('disappear', [$disappeared]);
+			}
+			$prior_appeared[index] = $appeared;
+		}
+	}
 
-      $appeared.trigger('appear', [$appeared]);
+	function add_selector(selector) {
+		selectors.push(selector);
+		$prior_appeared.push();
+	}
 
-      if ($prior_appeared[index]) {
-        var $disappeared = $prior_appeared[index].not($appeared);
-        $disappeared.trigger('disappear', [$disappeared]);
-      }
-      $prior_appeared[index] = $appeared;
-    }
-  }
+	// "appeared" custom filter
+	$.expr[':']['appeared'] = function (element) {
+		var $element = $(element);
+		if (!$element.is(':visible')) {
+			return false;
+		}
 
-  function add_selector(selector) {
-    selectors.push(selector);
-    $prior_appeared.push();
-  }
+		/**
+		 * @type {jQuery} scrollable container
+		 */
+		var $scroll_selector = $element.data('scroll_selector');
 
-  // "appeared" custom filter
-  $.expr[':'].appeared = function(element) {
-    var $element = $(element);
-    if (!$element.is(':visible')) {
-      return false;
-    }
+		var window_left = $scroll_selector.scrollLeft();
+		var window_top = $scroll_selector.scrollTop();
+		var offset = $element.offset();
+		var left = offset.left;
+		var top = offset.top;
 
-    var window_left = $window.scrollLeft();
-    var window_top = $window.scrollTop();
-    var offset = $element.offset();
-    var left = offset.left;
-    var top = offset.top;
+		if (top + $element.height() >= window_top &&
+			top - ($element.data('appear-top-offset') || 0) <= window_top + $scroll_selector.height() &&
+			left + $element.width() >= window_left &&
+			left - ($element.data('appear-left-offset') || 0) <= window_left + $scroll_selector.width()) {
+			return true;
+		} else {
+			return false;
+		}
+	};
 
-    if (top + $element.height() >= window_top &&
-        top - ($element.data('appear-top-offset') || 0) <= window_top + $window.height() &&
-        left + $element.width() >= window_left &&
-        left - ($element.data('appear-left-offset') || 0) <= window_left + $window.width()) {
-      return true;
-    } else {
-      return false;
-    }
-  };
+	$.fn.extend({
+		// watching for element's appearance in browser viewport
+		appear: function (options) {
+			var opts = $.extend({}, defaults, options || {});
+			/**
+			 * @type {jQuery} scrollable container
+			 */
+			var $scrollSelector = $(opts.scroll_selector);
+			var scrollSelectorName = $scrollSelector.selector || 'default';
 
-  $.fn.extend({
-    // watching for element's appearance in browser viewport
-    appear: function(options) {
-      var opts = $.extend({}, defaults, options || {});
-      var selector = this.selector || this;
-      if (!check_binded) {
-        var on_check = function() {
-          if (check_lock) {
-            return;
-          }
-          check_lock = true;
+			// add the scroll selector to each element, so it is accessable in the :appeared check
+			this.each(function () {
+				$(this).data('scroll_selector', $scrollSelector);
+			});
 
-          setTimeout(process, opts.interval);
-        };
+			var selector = this.selector || this;
+			// no binding on it yet
+			if ($.inArray(scrollSelectorName, check_binded) == -1) {
+				var on_check = function () {
+					if (check_lock) {
+						return;
+					}
+					check_lock = true;
 
-        $(window).scroll(on_check).resize(on_check);
-        check_binded = true;
-      }
+					setTimeout(process, opts.interval);
+				};
 
-      if (opts.force_process) {
-        setTimeout(process, opts.interval);
-      }
-      add_selector(selector);
-      return $(selector);
-    }
-  });
+				$scrollSelector.on('scroll', on_check);
 
-  $.extend({
-    // force elements's appearance check
-    force_appear: function() {
-      if (check_binded) {
-        process();
-        return true;
-      }
-      return false;
-    }
-  });
-})(function() {
-  if (typeof module !== 'undefined') {
-    // Node
-    return require('jquery');
-  } else {
-    return jQuery;
-  }
+				// no resize-binding on window yet
+				if (check_binded.length == 0) {
+					$(window).on('resize', on_check);
+				}
+
+				// mark it as bound
+				check_binded.push(scrollSelectorName);
+			}
+
+			if (opts.force_process) {
+				setTimeout(process, opts.interval);
+			}
+			add_selector(selector);
+			return $(selector);
+		}
+	});
+
+	$.extend({
+		// force elements's appearance check
+		force_appear: function () {
+			if (check_binded.length > 0) {
+				process();
+				return true;
+			}
+			return false;
+		}
+	});
+})(function () {
+	if (typeof module !== 'undefined') {
+		// Node
+		return require('jquery');
+	} else {
+		return jQuery;
+	}
 }());
